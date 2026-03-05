@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-from django.utils.text import slugify
 from django.urls import reverse
+from django.utils.text import slugify
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 
@@ -58,13 +58,10 @@ class Tag(NameModel):
         verbose_name = ('Тег')
         verbose_name_plural = ('Теги')
 
-    def get_absolute_url(self):
-        return reverse('tag_detail', kwargs={'slug': self.slug})
-
 
 class Ingredients(models.Model):
     '''
-    Ингридиенты к блюдам.
+    Ингредиенты к блюдам.
 
     Поля: `name`, `measurement_unit`.
     '''
@@ -72,20 +69,20 @@ class Ingredients(models.Model):
     name = models.CharField(
         'Название', max_length=constants.MAX_NAME_LENGTH, unique=True
     )
-    measurement_unit = models.CharField('Единица измерения')
+    measurement_unit = models.CharField(
+        'Единица измерения',
+        max_length=constants.MAX_SLUG_LENGTH
+    )
 
     class Meta:
-        verbose_name = ('Ингридиент')
-        verbose_name_plural = ('Ингридиенты')
+        verbose_name = ('Ингредиент')
+        verbose_name_plural = ('Ингредиенты')
         constraints = [
             models.UniqueConstraint(
                 fields=['name', 'measurement_unit'],
                 name='unique_ingredient',
             ),
         ]
-
-    def get_absolute_url(self):
-        return reverse('ingredients_detail', kwargs={'pk': self.pk})
 
     def __str__(self):
         return f'{self.name} ({self.measurement_unit})'
@@ -100,7 +97,7 @@ class RecipeIngredients(models.Model):
 
     ingredients = models.ForeignKey(
         Ingredients,
-        verbose_name=('Ингридиент'),
+        verbose_name=('Ингредиент'),
         on_delete=models.CASCADE,
         related_name='ingredients_in_recipe',
     )
@@ -108,6 +105,7 @@ class RecipeIngredients(models.Model):
         'Recipe',
         verbose_name=('Рецепт'),
         on_delete=models.CASCADE,
+        related_name='recipe_ingredients',
     )
     amount = models.PositiveSmallIntegerField(
         'Количество',
@@ -115,8 +113,8 @@ class RecipeIngredients(models.Model):
     )
 
     class Meta:
-        verbose_name = ('Ингридиент')
-        verbose_name_plural = ('Ингридиенты')
+        verbose_name = ('Ингредиент')
+        verbose_name_plural = ('Ингредиенты')
         constraints = [
             models.UniqueConstraint(
                 fields=('ingredients', 'recipe'),
@@ -146,7 +144,7 @@ class Recipe(models.Model):
     image = models.ImageField(
         upload_to='api/images/',
         null=True,
-        default=None,
+        blank=True,
     )
     text = models.TextField('Описание')
     ingredients = models.ManyToManyField(
@@ -161,14 +159,6 @@ class Recipe(models.Model):
         related_name='recipes',
     )
     cooking_time = models.PositiveIntegerField('Время приготовления (мин)')
-    is_favorited = models.BooleanField(
-        'Избранное',
-        default=False,
-    )
-    is_in_shopping_cart = models.BooleanField(
-        'В списке покупок',
-        default=False,
-    )
 
     class Meta:
         verbose_name = ('Рецепт')
@@ -176,78 +166,60 @@ class Recipe(models.Model):
         ordering = ('-id',)
 
     def get_absolute_url(self):
-        return reverse('recipe_detail', kwargs={'pk': self.pk})
+        return reverse('recipes-detail', kwargs={'pk': self.pk})
 
     def __str__(self):
         return self.name
 
 
-class Favorite(models.Model):
+class UserRecipeRelationBase(models.Model):
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='%(class)s',
+        verbose_name=('Пользователь'),
+    )
+    recipe = models.ForeignKey(
+        Recipe,
+        on_delete=models.CASCADE,
+        related_name='%(class)s',
+        verbose_name=('Рецепт'),
+    )
+
+    class Meta:
+        abstract = True
+        constraints = [
+            models.UniqueConstraint(
+                fields=('user', 'recipe'),
+                name='unique_%(class)s'
+            )
+        ]
+
+    def __str__(self):
+        return f'{self.user} - {self.recipe}'
+
+
+class Favorite(UserRecipeRelationBase):
     '''
     Промежуточная связь пользователь добавил рецепт в избранное.
 
     Поля: `user`, `recipe`.
     '''
-
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='favorites',
-        verbose_name=('Пользователь'),
-    )
-    recipe = models.ForeignKey(
-        Recipe,
-        on_delete=models.CASCADE,
-        related_name='favorites',
-        verbose_name=('Рецепт'),
-    )
-
     class Meta:
         verbose_name = ('Избранное')
-        verbose_name_plural = ('Избраные')
-        constraints = [
-            models.UniqueConstraint(
-                fields=('user', 'recipe'),
-                name='unique_favorite'
-            )
-        ]
-
-    def __str__(self):
-        return f'{self.user} - {self.recipe}'
+        verbose_name_plural = ('Избранные')
 
 
-class ShoppingCart(models.Model):
+class ShoppingCart(UserRecipeRelationBase):
     '''
     Промежуточная связь пользователь добавил рецепт в список покупок.
 
     Поля: `user`, `recipe`.
     '''
-
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='shoppong_carts',
-        verbose_name=('Пользователь'),
-    )
-    recipe = models.ForeignKey(
-        Recipe,
-        on_delete=models.CASCADE,
-        related_name='shoppong_carts',
-        verbose_name=('Рецепт'),
-    )
-
     class Meta:
         verbose_name = ('Список покупок')
         verbose_name_plural = ('Списки покупок')
-        constraints = [
-            models.UniqueConstraint(
-                fields=('user', 'recipe'),
-                name='unique_shoppong_cart'
-            )
-        ]
-
-    def __str__(self):
-        return f'{self.user} - {self.recipe}'
 
 
 class Subscription(models.Model):
@@ -260,13 +232,13 @@ class Subscription(models.Model):
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='subscriptions_as_follower',
+        related_name='subscriptions',
         verbose_name=('Пользователь'),
     )
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='subscriptions_as_author',
+        related_name='subscribers',
         verbose_name=('Автор'),
     )
 

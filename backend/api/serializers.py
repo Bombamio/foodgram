@@ -51,7 +51,7 @@ class UserSerializer(DjoserUserSerializer):
         )
         read_only_fields = (
             'id', 'username', 'email', 'first_name', 'last_name',
-            'is_subscribed', 'avatar',
+            'is_subscribed',
         )
 
     def get_is_subscribed(self, obj):
@@ -67,8 +67,10 @@ class UserSerializer(DjoserUserSerializer):
         data = super().to_representation(instance)
         request = self.context.get('request')
 
-        if data.get('avatar') and request:
-            data['avatar'] = request.build_absolute_uri(data['avatar'])
+        if instance.avatar and hasattr(instance.avatar, 'url') and request:
+            data['avatar'] = request.build_absolute_uri(instance.avatar.url)
+        else:
+            data['avatar'] = None
 
         return data
 
@@ -223,6 +225,16 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         return recipe
 
     def update(self, instance, validated_data):
+        request = self.context.get('request')
+        if request:
+            if 'ingredients' not in request.data:
+                raise serializers.ValidationError(
+                    {'ingredients': 'Это поле обязательно.'}
+                )
+            if 'tags' not in request.data:
+                raise serializers.ValidationError(
+                    {'tags': 'Это поле обязательно.'}
+                )
         ingredients_data = validated_data.pop('ingredients', None)
         tags_data = validated_data.pop('tags', None)
 
@@ -273,9 +285,8 @@ class SubscriptionSerializer(serializers.ModelSerializer):
     email = serializers.ReadOnlyField(source='author.email')
     first_name = serializers.ReadOnlyField(source='author.first_name')
     last_name = serializers.ReadOnlyField(source='author.last_name')
-    avatar = serializers.ImageField(source='author.avatar')
+    avatar = serializers.SerializerMethodField()
     is_subscribed = serializers.SerializerMethodField()
-
     recipes = serializers.SerializerMethodField()
     recipes_count = serializers.IntegerField(source='author.recipes.count')
 
@@ -285,21 +296,41 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name',
             'is_subscribed', 'avatar', 'recipes', 'recipes_count',
         )
-        read_only_fields = fields
+
+    def get_avatar(self, obj):
+        request = self.context.get('request')
+        if obj.author.avatar and hasattr(obj.author.avatar, 'url') and request:
+            return request.build_absolute_uri(obj.author.avatar.url)
+        return None
 
     def get_recipes(self, obj):
         request = self.context.get('request')
-        recipes_limit = request.query_params.get('recipes_limit')
         recipes = obj.author.recipes.all()
-        if recipes_limit:
-            recipes = recipes[:int(recipes_limit)]
-        return ShortRecipeSerializer(recipes, many=True).data
+
+        if request:
+            recipes_limit = request.query_params.get('recipes_limit')
+            if recipes_limit:
+                try:
+                    limit = int(recipes_limit)
+                    recipes = recipes[:limit]
+                except (ValueError, TypeError):
+                    pass
+
+        context = {'request': request} if request else {}
+        return ShortRecipeSerializer(
+            recipes,
+            many=True,
+            context=context
+        ).data
 
     def get_is_subscribed(self, obj):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
-            return True
-        return False
+            return Subscription.objects.filter(
+                user=request.user,
+                author=obj.author
+            ).exists()
+        return True
 
 
 class TokenObtainSerializer(serializers.Serializer):
@@ -307,12 +338,13 @@ class TokenObtainSerializer(serializers.Serializer):
 
     username = serializers.CharField(required=True)
     confirmation_code = serializers.CharField(required=True)
+    email = serializers.EmailField()
 
     def validate(self, data):
-        username = data.get('username')
+        email = data.get('email')
         confirmation_code = data.get('confirmation_code')
 
-        user = get_object_or_404(User, username=username)
+        user = get_object_or_404(User, email=email)
 
         if not default_token_generator.check_token(
             user, confirmation_code

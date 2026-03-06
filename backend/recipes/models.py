@@ -38,20 +38,11 @@ class Tag(NameModel):
         'Слаг',
         unique=True,
         max_length=constants.MAX_SLUG_LENGTH,
-        blank=True
     )
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            base_slug = slugify(self.name)
-            slug = base_slug
-            counter = 1
-
-            # Используем self.__class__ чтобы работало для любых моделей
-            while self.__class__.objects.filter(slug=slug).exists():
-                slug = f'{base_slug}-{counter}'
-                counter += 1
-            self.slug = slug
+            self.slug = slugify(self.name)
         super().save(*args, **kwargs)
 
     class Meta:
@@ -67,7 +58,7 @@ class Ingredients(models.Model):
     '''
 
     name = models.CharField(
-        'Название', max_length=constants.MAX_NAME_LENGTH, unique=True
+        'Название', max_length=constants.MAX_NAME_LENGTH
     )
     measurement_unit = models.CharField(
         'Единица измерения',
@@ -158,7 +149,10 @@ class Recipe(models.Model):
         verbose_name=('Теги'),
         related_name='recipes',
     )
-    cooking_time = models.PositiveIntegerField('Время приготовления (мин)')
+    cooking_time = models.PositiveIntegerField(
+        'Время приготовления (мин)',
+        validators=[MinValueValidator(constants.MIN_AMOUNT_VALUE)]
+    )
 
     class Meta:
         verbose_name = ('Рецепт')
@@ -166,7 +160,7 @@ class Recipe(models.Model):
         ordering = ('-id',)
 
     def get_absolute_url(self):
-        return reverse('recipes-detail', kwargs={'pk': self.pk})
+        return reverse('recipe-detail', kwargs={'pk': self.pk})
 
     def __str__(self):
         return self.name
@@ -255,6 +249,10 @@ class Subscription(models.Model):
     def clean(self):
         if self.user == self.author:
             raise ValidationError('Нельзя подписаться на самого себя')
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f'{self.user} - {self.author}'

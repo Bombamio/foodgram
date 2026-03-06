@@ -1,3 +1,5 @@
+import os
+
 from django.contrib.auth import get_user_model
 from django.db import models
 from django.db.models import Exists, OuterRef
@@ -9,17 +11,20 @@ from rest_framework import filters, permissions, status, viewsets
 from rest_framework.decorators import APIView, action
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 
-from api.permissions import IsAuthorOrReadOnly
-from api.filters import RecipeFilter
-from api.pagination import RecipePagination
+from .permissions import IsAuthorOrReadOnly
+from .filters import IngredientsFilter, RecipeFilter
+from .pagination import RecipePagination
 from recipes.models import (
     Recipe,
     Tag,
     Ingredients,
     RecipeIngredients,
     Favorite,
-    ShoppingCart
+    ShoppingCart,
+    Subscription
 )
 from .serializers import (
     RecipeWriteSerializer,
@@ -49,8 +54,8 @@ class IngredientsViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = IngredientsSerializer
     permission_classes = (permissions.AllowAny,)
     pagination_class = None
-    filter_backends = (filters.SearchFilter,)
-    search_fields = ('^name',)
+    filter_backends = (DjangoFilterBackend,)
+    filterset_class = IngredientsFilter
 
 
 class RecipeViewSet(viewsets.ModelViewSet):
@@ -68,20 +73,19 @@ class RecipeViewSet(viewsets.ModelViewSet):
     ordering = ('-cooking_time',)
     filterset_class = RecipeFilter
     search_fields = ('name',)
+    pagination_class = RecipePagination
 
     def get_queryset(self):
         user = self.request.user
         queryset = super().get_queryset()
 
-        is_in_cart = self.request.query_params.get('is_in_shopping_cart')
-        if is_in_cart and user.is_authenticated:
-            cart_subquery = ShoppingCart.objects.filter(
-                user=user,
-                recipe=OuterRef('pk')
-            )
-            queryset = queryset.annotate(
-                in_cart=Exists(cart_subquery)
-            ).filter(in_cart=True)
+        if user.is_authenticated:
+
+            if self.request.query_params.get('is_in_shopping_cart') == '1':
+                queryset = queryset.filter(shoppingcart__user=user)
+
+            if self.request.query_params.get('is_favorited') == '1':
+                queryset = queryset.filter(favorite__user=user)
 
         return queryset
 
@@ -97,7 +101,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
     def get_short_link(self, request, pk=None):
         recipe = self.get_object()
         return Response(
-            {'short_link': request.build_absolute_uri(
+            {'short-link': request.build_absolute_uri(
                 reverse('recipe-detail', kwargs={'pk': recipe.pk})
             )},
             status=status.HTTP_200_OK
@@ -211,6 +215,7 @@ class UserViewSet(views.UserViewSet):
 
     queryset = User.objects.all()
     permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
+    pagination_class = RecipePagination
     filter_backends = (filters.SearchFilter,)
     search_fields = ('username',)
 
@@ -227,25 +232,37 @@ class UserViewSet(views.UserViewSet):
     )
     def manage_avatar(self, request, *args, **kwargs):
         user = request.user
-        if request.method == 'PUT':
 
-            serializer = UserSerializer(
-                user, data=request.data, partial=True,
-                context={'request': request}
+        if request.method == 'PUT':
+            avatar = request.data.get('avatar')
+
+            if not avatar:
+                return Response(
+                    {'avatar': ['Аватар не указан.']},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            user.avatar = avatar
+            user.save()
+
+            return Response(
+                {'avatar': request.build_absolute_uri(user.avatar.url)},
+                status=status.HTTP_200_OK
             )
 
-            if serializer.is_valid(raise_exception=True):
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_200_OK)
-
-        user.avatar.delete(save=True)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        if request.method == 'DELETE':
+            try:
+                user.avatar = None
+                user.save()
+                return Response(status=status.HTTP_204_NO_CONTENT)
+            except Exception:
+                return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(
         url_path='subscribe', methods=['post', 'delete'], detail=True,
         permission_classes=[permissions.IsAuthenticated]
     )
-    def subscribe(self, request, pk=None):
+    def subscribe(self, request, *args, **kwargs):
         author = self.get_object()
         user = request.user
 
@@ -255,29 +272,38 @@ class UserViewSet(views.UserViewSet):
                     {'detail': 'Нельзя подписаться на самого себя.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            if user.subscriptions.filter(author=author).exists():
+
+            if Subscription.objects.filter(
+                    user=user, author=author).exists():
                 return Response(
                     {'detail': 'Вы уже подписаны на этого пользователя.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            subscription = user.subscriptions.create(author=author)
+
+            subscription = Subscription.objects.create(
+                user=user,
+                author=author
+            )
+
             serializer = SubscriptionSerializer(
                 subscription,
                 context={'request': request}
             )
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED
+            )
 
-        subscription = user.subscriptions.filter(author=author)
+        subscription = Subscription.objects.filter(user=user, author=author)
+
         if not subscription.exists():
             return Response(
                 {'detail': 'Вы не подписаны на этого пользователя.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
         subscription.delete()
-        return Response(
-            {'detail': 'Вы отписались от этого пользователя.'},
-            status=status.HTTP_204_NO_CONTENT
-        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(
         url_path='subscriptions', methods=['get'], detail=False,
@@ -285,15 +311,23 @@ class UserViewSet(views.UserViewSet):
     )
     def subscriptions(self, request):
         user = request.user
-        subscriptions = user.subscriptions.select_related('author')
-        paginaror = RecipePagination()
-        page = paginaror.paginate_queryset(
-            subscriptions, request, view=self
-        )
+        subscriptions = user.subscriptions.select_related('author').all()
+        page = self.paginate_queryset(subscriptions)
+
+        if page is not None:
+            serializer = SubscriptionSerializer(
+                page,
+                many=True,
+                context={'request': request}
+            )
+            return self.get_paginated_response(serializer.data)
+
         serializer = SubscriptionSerializer(
-            page, many=True, context={'request': request}
+            subscriptions,
+            many=True,
+            context={'request': request}
         )
-        return paginaror.get_paginated_response(serializer.data)
+        return Response(serializer.data)
 
 
 class TokenObtainView(APIView):

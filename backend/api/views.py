@@ -1,40 +1,36 @@
-import os
-
 from django.contrib.auth import get_user_model
 from django.db import models
-from django.db.models import Exists, OuterRef
-from django.urls import reverse
-from djoser import views
 from django.http import HttpResponse
+from django.urls import reverse
 from django_filters.rest_framework import DjangoFilterBackend
+from djoser import views
 from rest_framework import filters, permissions, status, viewsets
-from rest_framework.decorators import APIView, action
+from rest_framework.decorators import action
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
-from django.core.exceptions import ValidationError
-from django.db import IntegrityError
 
-from .permissions import IsAuthorOrReadOnly
 from .filters import IngredientsFilter, RecipeFilter
 from .pagination import RecipePagination
-from recipes.models import (
-    Recipe,
-    Tag,
-    Ingredients,
-    RecipeIngredients,
-    Favorite,
-    ShoppingCart,
-    Subscription
-)
+from .permissions import IsAuthorOrReadOnly
 from .serializers import (
-    RecipeWriteSerializer,
-    RecipeReadSerializer,
-    SubscriptionSerializer,
-    ShortRecipeSerializer,
-    TagSerializer,
+    AvatarSerializer,
     IngredientsSerializer,
+    RecipeReadSerializer,
+    RecipeWriteSerializer,
+    ShortRecipeSerializer,
+    SubscriptionSerializer,
+    TagSerializer,
     TokenObtainSerializer,
-    UserSerializer,
+)
+from recipes.models import (
+    Favorite,
+    Ingredients,
+    Recipe,
+    RecipeIngredients,
+    ShoppingCart,
+    Subscription,
+    Tag,
 )
 
 User = get_user_model()
@@ -234,29 +230,18 @@ class UserViewSet(views.UserViewSet):
         user = request.user
 
         if request.method == 'PUT':
-            avatar = request.data.get('avatar')
-
-            if not avatar:
-                return Response(
-                    {'avatar': ['Аватар не указан.']},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            user.avatar = avatar
-            user.save()
-
-            return Response(
-                {'avatar': request.build_absolute_uri(user.avatar.url)},
-                status=status.HTTP_200_OK
+            serializer = AvatarSerializer(
+                user,
+                data=request.data,
+                partial=True,
+                context={'request': request}
             )
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
 
-        if request.method == 'DELETE':
-            try:
-                user.avatar = None
-                user.save()
-                return Response(status=status.HTTP_204_NO_CONTENT)
-            except Exception:
-                return Response(status=status.HTTP_204_NO_CONTENT)
+        user.avatar.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(
         url_path='subscribe', methods=['post', 'delete'], detail=True,

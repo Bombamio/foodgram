@@ -1,9 +1,9 @@
-from django.db import models
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
+from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
-from django.core.validators import MinValueValidator
-from django.core.exceptions import ValidationError
 
 from . import constants
 

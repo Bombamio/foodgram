@@ -6,4 +6,10 @@ from .models import MyUser
 UserAdmin.fieldsets += (
     ('Extra Fields', {'fields': ('avatar',)}),
 )
-admin.site.register(MyUser, UserAdmin)
+
+
+@admin.register(MyUser)
+class UserAdmin(admin.ModelAdmin):
+    search_fields = ('email', 'username',)
+    list_display = ('email', 'username', 'first_name', 'last_name',)
+    list_display_links = ('email', 'username',)

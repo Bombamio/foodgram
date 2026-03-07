@@ -1,7 +1,6 @@
 import base64
 import uuid
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core.files.base import ContentFile
@@ -35,6 +34,16 @@ class Base64ImageField(serializers.ImageField):
             data = ContentFile(base64.b64decode(imgstr), name=filename)
 
         return super().to_internal_value(data)
+
+
+class AvatarSerializer(serializers.ModelSerializer):
+    '''Сериализатор для загрузки аватара.'''
+
+    avatar = Base64ImageField()
+
+    class Meta:
+        model = User
+        fields = ('avatar',)
 
 
 class UserSerializer(DjoserUserSerializer):

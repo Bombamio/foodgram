@@ -20,7 +20,7 @@ services:
   frontend:
     image: bombamio/foodgram_frontend:latest
     command: cp -r /app/build/. /frontend_static/
-    volumes:
+    volumes: 
       - static:/frontend_static
   gateway:
     image: bombamio/foodgram_gateway:latest

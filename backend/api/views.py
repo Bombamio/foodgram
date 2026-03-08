@@ -69,7 +69,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = super().get_queryset()
+        queryset = Recipe.objects.select_related('author')
 
         if user.is_authenticated:
             shopping_cart_subquery = ShoppingCart.objects.filter(
@@ -90,6 +90,11 @@ class RecipeViewSet(viewsets.ModelViewSet):
                 is_in_shopping_cart=Value(False, output_field=BooleanField()),
                 is_favorited=Value(False, output_field=BooleanField())
             )
+
+        queryset = queryset.prefetch_related(
+            'tags',
+            'recipe_ingredients__ingredients',
+        )
 
         return queryset
 

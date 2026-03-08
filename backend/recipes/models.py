@@ -1,9 +1,7 @@
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
-from django.utils.text import slugify
 
 from . import constants
 
@@ -11,58 +9,43 @@ from . import constants
 User = get_user_model()
 
 
-class NameModel(models.Model):
-    '''
-    Абстрактная модель с полем `name`.
-    '''
+class Tag(models.Model):
+    """
+    Теги для рецептов (завтрак, обед, ужин).
 
+    Поля: `name`, `slug`.
+    """
     name = models.CharField(
-        'Название', max_length=constants.MAX_NAME_LENGTH, unique=True
+        'Название', max_length=constants.TAG_NAME_MAX_LENGTH, unique=True
+    )
+    slug = models.SlugField(
+        'Слаг',
+        unique=True,
+        max_length=constants.TAG_SLUG_MAX_LENGTH,
     )
 
     class Meta:
         ordering = ('name',)
+        verbose_name = ('Тег')
+        verbose_name_plural = ('Теги')
 
     def __str__(self):
         return self.name
 
 
-class Tag(NameModel):
-    '''
-    Теги для рецептов (завтрак, обед, ужин).
-
-    Поля: `name`, `slug`.
-    '''
-
-    slug = models.SlugField(
-        'Слаг',
-        unique=True,
-        max_length=constants.MAX_SLUG_LENGTH,
-    )
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.name)
-        super().save(*args, **kwargs)
-
-    class Meta:
-        verbose_name = ('Тег')
-        verbose_name_plural = ('Теги')
-
-
 class Ingredients(models.Model):
-    '''
+    """
     Ингредиенты к блюдам.
 
     Поля: `name`, `measurement_unit`.
-    '''
+    """
 
     name = models.CharField(
-        'Название', max_length=constants.MAX_NAME_LENGTH
+        'Название', max_length=constants.INGREDIENT_NAME_MAX_LENGTH
     )
     measurement_unit = models.CharField(
         'Единица измерения',
-        max_length=constants.MAX_SLUG_LENGTH
+        max_length=constants.INGREDIENT_MEASUREMENT_UNIT_MAX_LENGTH
     )
 
     class Meta:
@@ -80,11 +63,11 @@ class Ingredients(models.Model):
 
 
 class RecipeIngredients(models.Model):
-    '''
+    """
     Промежуточная связь какой ингредиент в каком рецепте и сколько.
 
     Поля: `ingredients`, `recipe`, `amount`.
-    '''
+    """
 
     ingredients = models.ForeignKey(
         Ingredients,
@@ -100,7 +83,10 @@ class RecipeIngredients(models.Model):
     )
     amount = models.PositiveSmallIntegerField(
         'Количество',
-        validators=[MinValueValidator(constants.MIN_AMOUNT_VALUE)]
+        validators=[
+            MinValueValidator(constants.INGREDIENT_MIN_AMOUNT_VALUE),
+            MaxValueValidator(constants.INGREDIENT_MAX_AMOUNT_VALUE)
+        ]
     )
 
     class Meta:
@@ -118,12 +104,12 @@ class RecipeIngredients(models.Model):
 
 
 class Recipe(models.Model):
-    '''
+    """
     Рецепты блюд.
 
     Поля: `name`, `author`, `image`, `text`, `ingredients`,
     `tags`, `cooking_time`, `is_favorited`, `is_in_shopping_cart`.
-    '''
+    """
 
     author = models.ForeignKey(
         User,
@@ -131,7 +117,9 @@ class Recipe(models.Model):
         related_name='recipes',
         verbose_name=('Автор'),
     )
-    name = models.CharField('Название', max_length=constants.MAX_NAME_LENGTH)
+    name = models.CharField(
+        'Название', max_length=constants.RECIPE_NAME_MAX_LENGTH
+    )
     image = models.ImageField(
         upload_to='api/images/',
         null=True,
@@ -151,13 +139,16 @@ class Recipe(models.Model):
     )
     cooking_time = models.PositiveIntegerField(
         'Время приготовления (мин)',
-        validators=[MinValueValidator(constants.MIN_AMOUNT_VALUE)]
+        validators=[
+            MinValueValidator(constants.RECIPE_COOKING_TIME_MIN_VALUE),
+            MaxValueValidator(constants.RECIPE_COOKING_TIME_MAX_VALUE)
+        ]
     )
 
     class Meta:
         verbose_name = ('Рецепт')
         verbose_name_plural = ('Рецепты')
-        ordering = ('-id',)
+        ordering = ('name', 'author')
 
     def get_absolute_url(self):
         return reverse('recipe-detail', kwargs={'pk': self.pk})
@@ -195,64 +186,22 @@ class UserRecipeRelationBase(models.Model):
 
 
 class Favorite(UserRecipeRelationBase):
-    '''
+    """
     Промежуточная связь пользователь добавил рецепт в избранное.
 
     Поля: `user`, `recipe`.
-    '''
-    class Meta:
+    """
+    class Meta(UserRecipeRelationBase.Meta):
         verbose_name = ('Избранное')
         verbose_name_plural = ('Избранные')
 
 
 class ShoppingCart(UserRecipeRelationBase):
-    '''
+    """
     Промежуточная связь пользователь добавил рецепт в список покупок.
 
     Поля: `user`, `recipe`.
-    '''
-    class Meta:
+    """
+    class Meta(UserRecipeRelationBase.Meta):
         verbose_name = ('Список покупок')
         verbose_name_plural = ('Списки покупок')
-
-
-class Subscription(models.Model):
-    '''
-    Промежуточная связь подписка пользователя на автора.
-
-    Поля: `user`, `author`.
-    '''
-
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='subscriptions',
-        verbose_name=('Пользователь'),
-    )
-    author = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='subscribers',
-        verbose_name=('Автор'),
-    )
-
-    class Meta:
-        verbose_name = ('Подписка')
-        verbose_name_plural = ('Подписки')
-        constraints = [
-            models.UniqueConstraint(
-                fields=('user', 'author'),
-                name='unique_subscription'
-            )
-        ]
-
-    def clean(self):
-        if self.user == self.author:
-            raise ValidationError('Нельзя подписаться на самого себя')
-
-    def save(self, *args, **kwargs):
-        self.full_clean()
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f'{self.user} - {self.author}'

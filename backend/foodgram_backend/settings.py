@@ -8,9 +8,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv('SECRET_KEY', get_random_secret_key())
 
-DEBUG = os.getenv('DEBUG', 'False')
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '*').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',')
 CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'https://freeforfoodgram.ddns.net').split(',')
 
 
@@ -30,7 +30,7 @@ INSTALLED_APPS = [
     'users.apps.UsersConfig'
 ]
 
-AUTH_USER_MODEL = 'users.MyUser'
+AUTH_USER_MODEL = 'users.User'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -107,11 +107,11 @@ USE_TZ = True
 
 
 STATIC_URL = 'static/'
-# STATIC_ROOT = BASE_DIR / '/static/'
+# STATIC_ROOT = BASE_DIR / 'static/'
 STATIC_ROOT = '/backend_static/static/'
 
 MEDIA_URL = '/media/'
-# MEDIA_ROOT = BASE_DIR / '/media/'
+# MEDIA_ROOT = BASE_DIR / 'media/'
 MEDIA_ROOT = '/media/'
 
 REST_FRAMEWORK = {
@@ -144,3 +144,6 @@ DJOSER = {
 }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+PAGE_SIZE = 6
+MAX_PAGE_SIZE = 100

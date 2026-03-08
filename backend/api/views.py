@@ -106,7 +106,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         ]
         return 'Список покупок:\n\n' + '\n'.join(lines)
 
-    def hendl_favorite_shopping_cart(self, request, model):
+    def hendle_favorite_shopping_cart(self, request, model):
         recipe = self.get_object()
         user = request.user
 
@@ -180,14 +180,14 @@ class RecipeViewSet(viewsets.ModelViewSet):
     @action(url_path='favorite', methods=['post', 'delete'], detail=True,
             permission_classes=[permissions.IsAuthenticated])
     def manage_favorite(self, request, pk=None):
-        return self.hendl_favorite_shopping_cart(request, Favorite)
+        return self.hendle_favorite_shopping_cart(request, Favorite)
 
     @action(
         url_path='shopping_cart', methods=['post', 'delete'],
         detail=True, permission_classes=[permissions.IsAuthenticated]
     )
     def manage_shopping_cart(self, request, pk=None):
-        return self.hendl_favorite_shopping_cart(request, ShoppingCart)
+        return self.hendle_favorite_shopping_cart(request, ShoppingCart)
 
 
 class CustomUserViewSet(views.UserViewSet):
@@ -252,7 +252,7 @@ class CustomUserViewSet(views.UserViewSet):
                 )
 
             serializer = SubscriptionSerializer(
-                subscription,
+                author,
                 context={'request': request}
             )
             return Response(

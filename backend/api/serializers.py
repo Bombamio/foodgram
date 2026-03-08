@@ -126,8 +126,8 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         )
 
     def validate(self, data):
-        ingredients = self.data.get('ingredients')
-        tags = self.data.get('tags')
+        ingredients = data.get('ingredients')
+        tags = data.get('tags')
 
         if not ingredients:
             raise serializers.ValidationError(
@@ -182,7 +182,8 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
 
         instance = super().update(instance, validated_data)
 
-        instance.tags.set(tags_data)
+        if tags_data is not None:
+            instance.tags.set(tags_data)
 
         instance.recipe_ingredients.clear()
         self.recipe_ingredients_create(instance, ingredients_data)
@@ -211,7 +212,7 @@ class SubscriptionSerializer(UserSerializer):
     """Сериализатор для отображения подписок."""
 
     recipes = serializers.SerializerMethodField()
-    recipes_count = serializers.IntegerField(source='author.recipes.count')
+    recipes_count = serializers.IntegerField(source='recipes.count')
 
     class Meta:
         model = User
@@ -222,7 +223,7 @@ class SubscriptionSerializer(UserSerializer):
 
     def get_avatar(self, obj):
         request = self.context.get('request')
-        if obj.author.avatar and hasattr(obj.author.avatar, 'url') and request:
+        if obj.author.avatar and hasattr(obj.avatar, 'url') and request:
             return obj.author.avatar.url
         return None
 

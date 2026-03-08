@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.db import models
+from django.db.models import BooleanField, Exists, OuterRef, Sum, Value
 from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
 from djoser import views
@@ -71,28 +71,27 @@ class RecipeViewSet(viewsets.ModelViewSet):
         user = self.request.user
         queryset = super().get_queryset()
 
-        if not user.is_authenticated:
-            return queryset.annotate(
-                is_in_shopping_cart=models.Value(
-                    False, output_field=models.BooleanField()
-                ),
-                is_favorited=models.Value(
-                    False, output_field=models.BooleanField()
-                )
+        if user.is_authenticated:
+            shopping_cart_subquery = ShoppingCart.objects.filter(
+                user=user,
+                recipe=OuterRef('pk')
+            )
+            favorite_subquery = Favorite.objects.filter(
+                user=user,
+                recipe=OuterRef('pk')
             )
 
-        # Аннатируем подзагрузку флагов избранного и списка покупок.
-        return queryset.annotate(is_in_shopping_cart=models.Exists(
-            ShoppingCart.objects.filter(
-                user=user,
-                recipe=models.OuterRef('pk')
+            queryset = queryset.annotate(
+                is_in_shopping_cart=Exists(shopping_cart_subquery),
+                is_favorited=Exists(favorite_subquery)
             )
-        )).annotate(is_favorited=models.Exists(
-            Favorite.objects.filter(
-                user=user,
-                recipe=models.OuterRef('pk')
+        else:
+            queryset = queryset.annotate(
+                is_in_shopping_cart=Value(False, output_field=BooleanField()),
+                is_favorited=Value(False, output_field=BooleanField())
             )
-        ))
+
+        return queryset
 
     def build_shopping_list(self, ingredients):
         lines = [
@@ -157,7 +156,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         ).values(
             'ingredients__name',
             'ingredients__measurement_unit'
-        ).annotate(total_amount=models.Sum('amount'))
+        ).annotate(total_amount=Sum('amount'))
 
         if not ingredients.exists():
             return Response(

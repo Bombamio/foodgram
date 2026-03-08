@@ -70,8 +70,19 @@ class RecipeViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         queryset = super().get_queryset()
+
+        if not user.is_authenticated:
+            return queryset.annotate(
+                is_in_shopping_cart=models.Value(
+                    False, output_field=models.BooleanField()
+                ),
+                is_favorited=models.Value(
+                    False, output_field=models.BooleanField()
+                )
+            )
+
         # Аннатируем подзагрузку флагов избранного и списка покупок.
-        Recipe.objects.annotate(is_in_shopping_cart=models.Exists(
+        return queryset.annotate(is_in_shopping_cart=models.Exists(
             ShoppingCart.objects.filter(
                 user=user,
                 recipe=models.OuterRef('pk')
@@ -82,8 +93,6 @@ class RecipeViewSet(viewsets.ModelViewSet):
                 recipe=models.OuterRef('pk')
             )
         ))
-
-        return queryset
 
     def build_shopping_list(self, ingredients):
         lines = [

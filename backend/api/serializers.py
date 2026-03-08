@@ -133,7 +133,7 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'ingredients': 'Должен быть указан хотя бы один ингредиент.'}
             )
-        ingredient_ids = [item['id'].pk for item in ingredients]
+        ingredient_ids = [item['ingredients'].pk for item in ingredients]
         if len(ingredient_ids) != len(set(ingredient_ids)):
             raise serializers.ValidationError(
                 {'ingredients': 'Ингредиенты должны быть уникальными.'}
@@ -155,7 +155,7 @@ class RecipeWriteSerializer(serializers.ModelSerializer):
         RecipeIngredients.objects.bulk_create([
             RecipeIngredients(
                 recipe=recipe,
-                ingredients=ingredient['id'],
+                ingredients=ingredient['ingredients'],
                 amount=ingredient['amount']
             )
             for ingredient in ingredients_data

@@ -21,7 +21,7 @@ class Command(BaseCommand):
         path = options.get('path')
         if path is None:
             base_dir = Path(__file__).resolve().parent.parent.parent.parent
-            path = base_dir.parent / 'data' / 'ingredients.csv'
+            path = base_dir / 'data' / 'ingredients.csv'
         else:
             path = Path(path)
 

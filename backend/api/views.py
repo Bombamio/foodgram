@@ -58,7 +58,10 @@ class RecipeViewSet(viewsets.ModelViewSet):
         'tags',
         'recipe_ingredients__ingredients',
     )
-    permission_classes = (IsAuthorOrReadOnly,)
+    permission_classes = (
+        IsAuthorOrReadOnly,
+        permissions.IsAuthenticatedOrReadOnly
+    )
     filter_backends = (
         DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter
     )
@@ -106,7 +109,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         ]
         return 'Список покупок:\n\n' + '\n'.join(lines)
 
-    def hendle_favorite_shopping_cart(self, request, model):
+    def handle_favorite_shopping_cart(self, request, model):
         recipe = self.get_object()
         user = request.user
 
@@ -157,20 +160,20 @@ class RecipeViewSet(viewsets.ModelViewSet):
             permission_classes=[permissions.IsAuthenticated])
     def download_shopping_cart(self, request):
         ingredients = RecipeIngredients.objects.filter(
-            recipe__shoppingcarts__user=request.user
+            recipe__shoppingcart__user=request.user
         ).values(
             'ingredients__name',
             'ingredients__measurement_unit'
         ).annotate(total_amount=Sum('amount'))
 
         if not ingredients.exists():
-            return Response(
-                {'detail': 'Ваш список покупок пуст.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            content = 'Ваш список покупок пуст.'
+
+        else:
+            content = self.build_shopping_list(ingredients)
 
         response = HttpResponse(
-            self.build_shopping_list(ingredients), status=status.HTTP_200_OK,
+            content, status=status.HTTP_200_OK,
             content_type='text/plain; charset=utf-8'
         )
         response['Content-Disposition'] = \
@@ -180,14 +183,14 @@ class RecipeViewSet(viewsets.ModelViewSet):
     @action(url_path='favorite', methods=['post', 'delete'], detail=True,
             permission_classes=[permissions.IsAuthenticated])
     def manage_favorite(self, request, pk=None):
-        return self.hendle_favorite_shopping_cart(request, Favorite)
+        return self.handle_favorite_shopping_cart(request, Favorite)
 
     @action(
         url_path='shopping_cart', methods=['post', 'delete'],
         detail=True, permission_classes=[permissions.IsAuthenticated]
     )
     def manage_shopping_cart(self, request, pk=None):
-        return self.hendle_favorite_shopping_cart(request, ShoppingCart)
+        return self.handle_favorite_shopping_cart(request, ShoppingCart)
 
 
 class CustomUserViewSet(views.UserViewSet):
@@ -213,6 +216,13 @@ class CustomUserViewSet(views.UserViewSet):
         user = request.user
 
         if request.method == 'PUT':
+
+            if 'avatar' not in request.data:
+                return Response(
+                    {'avatar': 'Это поле обязательно.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             serializer = AvatarSerializer(
                 user,
                 data=request.data,
@@ -270,7 +280,6 @@ class CustomUserViewSet(views.UserViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        subscription.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(
@@ -278,9 +287,8 @@ class CustomUserViewSet(views.UserViewSet):
         permission_classes=[permissions.IsAuthenticated]
     )
     def subscriptions(self, request):
-        user = request.user
-        subscriptions = user.subscriptions.select_related('author').all()
-        page = self.paginate_queryset(subscriptions)
+        users = User.objects.filter(subscribers__user=request.user)
+        page = self.paginate_queryset(users)
 
         if page is not None:
             serializer = SubscriptionSerializer(
@@ -291,7 +299,7 @@ class CustomUserViewSet(views.UserViewSet):
             return self.get_paginated_response(serializer.data)
 
         serializer = SubscriptionSerializer(
-            subscriptions,
+            users,
             many=True,
             context={'request': request}
         )

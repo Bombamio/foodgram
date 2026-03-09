@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.db.models import Count
 
-from .models import Tag, Ingredients, Recipe
+from .models import Favorite, ShoppingCart, Tag, Ingredients, Recipe
 
 
 class CountMixin:
@@ -69,3 +69,17 @@ class RecipeAdmin(CountMixin, admin.ModelAdmin):
     @admin.display(description='В избранном')
     def favorite_count(self, obj):
         return getattr(obj, self.count_field, 0)
+
+
+@admin.register(Favorite)
+class FavoriteAdmin(admin.ModelAdmin):
+    list_display = ('user', 'recipe')
+    list_display_links = ('user', 'recipe')
+    search_fields = ('user__username', 'recipe__name')
+
+
+@admin.register(ShoppingCart)
+class ShoppingCartAdmin(admin.ModelAdmin):
+    list_display = ('user', 'recipe')
+    list_display_links = ('user', 'recipe')
+    search_fields = ('user__username', 'recipe__name')

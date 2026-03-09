@@ -107,7 +107,6 @@ jobs:
             npm cache clean --force
             sudo apt clean
             sudo journalctl --vacuum-time=1d
-            sudo docker system prune -af
             cd foodgram/
             sudo docker compose -f docker-compose.production.yml pull
             sudo docker compose -f docker-compose.production.yml down -v

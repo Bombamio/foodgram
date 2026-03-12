@@ -31,7 +31,7 @@ class Command(BaseCommand):
             )
             return
 
-        created_count = 0
+        ingredients = []
         with open(path, 'r', encoding='utf-8') as file:
             reader = csv.reader(file)
             for row in reader:
@@ -40,16 +40,19 @@ class Command(BaseCommand):
                 name, measurement_unit = row[0].strip(), row[1].strip()
                 if not name or not measurement_unit:
                     continue
-                _, created = Ingredients.objects.get_or_create(
+                ingredients.append(Ingredients(
                     name=name,
                     measurement_unit=measurement_unit
-                )
-                if created:
-                    created_count += 1
+                ))
+
+        created_objects = Ingredients.objects.bulk_create(
+            ingredients,
+            ignore_conflicts=True
+        )
 
         self.stdout.write(
             self.style.SUCCESS(
-                f'Загружено ингредиентов: {created_count}. '
+                f'Загружено ингредиентов: {len(created_objects)}. '
                 f'Всего в БД: {Ingredients.objects.count()}'
             )
         )

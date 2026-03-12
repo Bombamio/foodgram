@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.db.models import BooleanField, Exists, OuterRef, Sum, Value
+from django.db.models import Sum
 from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
 from djoser import views
@@ -52,12 +52,6 @@ class IngredientsViewSet(viewsets.ReadOnlyModelViewSet):
 
 class RecipeViewSet(viewsets.ModelViewSet):
 
-    queryset = Recipe.objects.select_related(
-        'author'
-    ).prefetch_related(
-        'tags',
-        'recipe_ingredients__ingredients',
-    )
     permission_classes = (
         IsAuthorOrReadOnly,
         permissions.IsAuthenticatedOrReadOnly
@@ -71,35 +65,12 @@ class RecipeViewSet(viewsets.ModelViewSet):
     pagination_class = RecipePagination
 
     def get_queryset(self):
-        user = self.request.user
-        queryset = Recipe.objects.select_related('author')
-
-        if user.is_authenticated:
-            shopping_cart_subquery = ShoppingCart.objects.filter(
-                user=user,
-                recipe=OuterRef('pk')
-            )
-            favorite_subquery = Favorite.objects.filter(
-                user=user,
-                recipe=OuterRef('pk')
-            )
-
-            queryset = queryset.annotate(
-                is_in_shopping_cart=Exists(shopping_cart_subquery),
-                is_favorited=Exists(favorite_subquery)
-            )
-        else:
-            queryset = queryset.annotate(
-                is_in_shopping_cart=Value(False, output_field=BooleanField()),
-                is_favorited=Value(False, output_field=BooleanField())
-            )
-
-        queryset = queryset.prefetch_related(
-            'tags',
-            'recipe_ingredients__ingredients',
+        return (
+            Recipe.objects
+            .with_user_annotations(self.request.user)
+            .select_related('author')
+            .prefetch_related('tags', 'recipe_ingredients__ingredients')
         )
-
-        return queryset
 
     def build_shopping_list(self, ingredients):
         lines = [
@@ -193,7 +164,7 @@ class RecipeViewSet(viewsets.ModelViewSet):
         return self.handle_favorite_shopping_cart(request, ShoppingCart)
 
 
-class CustomUserViewSet(views.UserViewSet):
+class UsersViewSet(views.UserViewSet):
 
     queryset = User.objects.all()
     permission_classes = (permissions.IsAuthenticatedOrReadOnly,)
@@ -216,12 +187,6 @@ class CustomUserViewSet(views.UserViewSet):
         user = request.user
 
         if request.method == 'PUT':
-
-            if 'avatar' not in request.data:
-                return Response(
-                    {'avatar': 'Это поле обязательно.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
 
             serializer = AvatarSerializer(
                 user,

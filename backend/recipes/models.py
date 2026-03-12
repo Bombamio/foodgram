@@ -3,6 +3,8 @@ from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
 
+from .managers import RecipeQuerySet
+
 from . import constants
 
 
@@ -111,6 +113,7 @@ class Recipe(models.Model):
     `tags`, `cooking_time`, `is_favorited`, `is_in_shopping_cart`.
     """
 
+    objects = RecipeQuerySet.as_manager()
     author = models.ForeignKey(
         User,
         on_delete=models.CASCADE,

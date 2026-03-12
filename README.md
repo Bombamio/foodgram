@@ -182,7 +182,7 @@ http://localhost/api/docs/
 # Ссылка на развернутый проект
 
 ```
-https://your_domain
+https://freeforfoodgram.ddns.net
 ```
 
 ---
